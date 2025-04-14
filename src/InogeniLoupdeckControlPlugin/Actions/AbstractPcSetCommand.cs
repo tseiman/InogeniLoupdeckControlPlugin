@@ -15,138 +15,34 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
           public abstract class AbstractPcSetCommand : PluginMultistateDynamicCommand
     {
 
-        private InogeniLoupdeckControlPlugin _plugin => (InogeniLoupdeckControlPlugin)this.Plugin;
+        protected InogeniLoupdeckControlPlugin _plugin => (InogeniLoupdeckControlPlugin)this.Plugin;
 
-        public String PC1Name { get; private set; } = "";
-        public String UARTDevice { get; private set; } = "";
+        public abstract String PCName { get;  set; }
 
-        private readonly InogeniHandler _inogeniHandler = InogeniLoupdeckControlPlugin.InogeniHandler;
+        protected readonly InogeniHandler InogeniHandler = InogeniLoupdeckControlPlugin.InogeniHandler;
+        protected const String DEVICENAME = "NOTSET ";
 
-        private const String DEVICENAME = "NOTSET ";
-        
-       
+        protected BitmapImage _image;
 
-        //     private String _currentState = "";
 
-        private BitmapImage _image;
+        public AbstractPcSetCommand() {
 
-        // Initializes the command class.
-        public Pc1SetCommand()
-               : base(groupName: "Misc", displayName: "Toggle Preview Transition", description: "The transition can be previewed in ATEM preview screen")
-        {
             this.IsWidget = true;
 
 
-   //         this.AddState("IMPOSSIBLE", "IMPOSSIBLE", "IMPOSSIBLE");
             this.AddState("NOSERIAL", "USB Switch " + DEVICENAME + "No Serial", "USB Switch " + DEVICENAME + "No Serial");
             this.AddState("PCINACTIVE", "USB Switch " + DEVICENAME + "inactive", "USB Switch " + DEVICENAME + "inactive");
             this.AddState("ACTIVE", "USB Switch " + DEVICENAME + "active", "USB Switch " + DEVICENAME + "active");
             this.AddState("INACTIVE", "USB Switch " + DEVICENAME + "inactive", "USB Switch " + DEVICENAME + "inactive");
 
-            this.MakeProfileAction("text;Enter PC name and serial device separated by a \";\":");
-
-
-
         }
 
 
-
-        protected override Boolean OnLoad()
-        {
-            var x = base.OnLoad();
-            this.SetCurrentState("", 0);
-
-
-            if (this._plugin.TryGetPluginSetting("PC1Name", out var PC1Name))
-            {
-                PluginLog.Info($"[Pc1SetCommand] Loading config AtemURI: <{PC1Name}>");
-                this.PC1Name = PC1Name;
-            }
-            else
-            {
-                PluginLog.Warning($"[Pc1SetCommand] NOT Loading config PC1Name");
-            }
-
-            if (this._plugin.TryGetPluginSetting("UARTDevice", out var UARTDevice))
-            {
-                PluginLog.Info($"[Pc1SetCommand] Loading config AtemURI: <{UARTDevice}>");
-                this.UARTDevice = UARTDevice;
-            }
-            else
-            {
-                PluginLog.Warning($"[Pc1SetCommand] NOT Loading config PC1Name");
-            }
-
-
-            return x;
-        }
-
-
-        protected override Boolean OnUnload()
-        {
-
-
-
-            return base.OnUnload();
-           
-        }
-
-
-
-        // This method is called when the user executes the command.
-        protected override void RunCommand(String actionParameter)
-        {
-            PluginLog.Verbose($"[Pc1SetCommand] RunCommand {this.GetCurrentState(actionParameter).Name}//{actionParameter}");
-
-
-            
-            var actionParams = actionParameter.Split(';');
-
-            if (actionParams.Length > 1)
-            {
-                if ((! this.PC1Name.Equals(actionParams[0]) ) || (!this.UARTDevice.Equals(actionParams[1])))
-                {
-
-                    PluginLog.Verbose($"[Pc1SetCommand] RunCommand  actionParams {actionParams[0]}//{actionParams[1]}");
-
-                    if (!actionParams[0].Equals(""))
-                    {
-                        this._plugin.SetPluginSetting("PC1Name", actionParams[0], false);
-                        PluginLog.Info($"[Pc1SetCommand] Storing config PC1Name: <{actionParams[0]}>");
-
-                    }
-
-                    if (!actionParams[1].Equals(""))
-                    {
-                        this._plugin.SetPluginSetting("UARTDevice", actionParams[1], false);
-                        PluginLog.Info($"[Pc1SetCommand] Storing config UARTDevice: <{actionParams[1]}>");
-                    }
-
-
-
-
-
-                }
-
-
-                this.PC1Name = actionParams[0];
-                this.UARTDevice = actionParams[1];
-                PluginLog.Verbose($"[Pc1SetCommand] RunCommand setting PC1Name: {this.PC1Name}// UARTDevice: {this.UARTDevice}");
-            }
-
-
-
-            this._inogeniHandler.setPC1State();
-            this.SetCurrentState(actionParameter, Array.IndexOf(Enum.GetValues(typeof(States)), this._inogeniHandler.pc1state));
-
-
-            this.ActionImageChanged();
-        }
-
+        public abstract States GetInogeniHandlerState();
 
         protected override BitmapImage GetCommandImage(String actionParameter, Int32 stateIndex, PluginImageSize imageSize)
         {
-            PluginLog.Verbose($"[Pc1SetCommand] GetCommandImage {actionParameter}//{this.GetCurrentState(actionParameter).Name}");
+            PluginLog.Verbose($"[{this.GetType().Name}] GetCommandImage {actionParameter}//{this.GetCurrentState(actionParameter).Name}");
 
            
             using (var bitmapBuilder = new BitmapBuilder(imageSize))
@@ -154,19 +50,19 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
 
 
           
-                switch (this._inogeniHandler.pc1state)
+                switch (this.GetInogeniHandlerState())
                 {
                     case InogeniHandler.States.PcUnavailable:
                         bitmapBuilder.FillRectangle(0, 0, imageSize.GetWidth(), imageSize.GetHeight(), Colors.DARKGREY);
-                        bitmapBuilder.DrawText($"{this.PC1Name} not availabe", Colors.GREY);
+                        bitmapBuilder.DrawText($"{this.PCName} not availabe", Colors.GREY);
                         break;
                     case InogeniHandler.States.Inactive:
                         bitmapBuilder.FillRectangle(0, 0, imageSize.GetWidth(), imageSize.GetHeight(), Colors.LIGHTGREY);
-                        bitmapBuilder.DrawText($"{this.PC1Name} inactive", BitmapColor.Black);
+                        bitmapBuilder.DrawText($"{this.PCName}", BitmapColor.Black);
                         break;
                     case InogeniHandler.States.Active:
                         bitmapBuilder.FillRectangle(0, 0, imageSize.GetWidth(), imageSize.GetHeight(), BitmapColor.Blue);
-                        bitmapBuilder.DrawText($"{this.PC1Name} active", BitmapColor.White);
+                        bitmapBuilder.DrawText($"{this.PCName} active", BitmapColor.White);
                         break;
                     default:
                         bitmapBuilder.FillRectangle(0, 0, imageSize.GetWidth(), imageSize.GetHeight(), Colors.GREY);
@@ -184,14 +80,39 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
         }
 
 
-        protected override String GetCommandDisplayName(String actionParameter, PluginImageSize imageSize)
-        {
-//            PluginLog.Verbose($"[MacroPlayCommand] GetCommandDisplayName {this.GetCurrentState(actionParameter).Name},  {this.GetCurrentState(actionParameter).Description},  {this.GetCurrentState(actionParameter).DisplayName}");
-            return  this.GetCurrentState(actionParameter).DisplayName;
+        protected String LoadConfigData(String dataId) {
 
-            // return "aaaaa";
-
+            if (this._plugin.TryGetPluginSetting(dataId, out var dataValue))
+            {
+                PluginLog.Info($"[{this.GetType().Name}] Loading config {dataId}: <{dataValue}>");
+                return dataValue;
+            }
+            else
+            {
+                PluginLog.Warning($"[{this.GetType().Name}] NOT Loading config PC1Name");
+                return "";
+            }
         }
+
+        protected Boolean SaveConfigData(String dataId, String oldDataToCompare, String newData) {
+
+            var result = false;
+
+            if (!oldDataToCompare.Equals(newData)) {
+
+                if (!newData.Equals(""))
+                {
+                    this._plugin.SetPluginSetting(dataId, newData, false);
+                    PluginLog.Info($"[{this.GetType().Name}] Storing config {dataId}: <{newData}>");
+                    result = true;
+                }
+            }
+
+            return result;
+        }
+
+
+        protected override String GetCommandDisplayName(String actionParameter, PluginImageSize imageSize) => this.GetCurrentState(actionParameter).DisplayName;
 
 
     }
