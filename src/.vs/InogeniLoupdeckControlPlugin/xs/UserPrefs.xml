@@ -1,0 +1,31 @@
+﻿<Properties StartupConfiguration="{7992EED8-FFBE-4B75-8016-17C25DFF14B0}|Default">
+  <MonoDevelop.Ide.Workbench ActiveDocument="InogeniLoupdeckControlPlugin/Properties/AssemblyInfo.cs">
+    <Files>
+      <File FileName="InogeniLoupdeckControlPlugin/metadata/LoupedeckPackage.yaml" Line="70" Column="73" />
+      <File FileName="InogeniLoupdeckControlPlugin/InogeniLoupdeckControlPlugin.csproj" Line="45" Column="1" />
+      <File FileName="InogeniLoupdeckControlPlugin/Actions/CounterAdjustment.cs" Line="1" Column="1" />
+      <File FileName="InogeniLoupdeckControlPlugin/BuildEvents/postbuild" Line="1" Column="1" />
+      <File FileName="../../../../../../Library/Frameworks/Mono.framework/Versions/6.12.0/lib/mono/xbuild/Microsoft/NuGet/Microsoft.NuGet.targets" Line="186" Column="5" />
+      <File FileName="InogeniLoupdeckControlPlugin/Properties/AssemblyInfo.cs" Line="1" Column="1" />
+    </Files>
+    <Pads>
+      <Pad Id="ProjectPad">
+        <State name="__root__">
+          <Node name="InogeniLoupdeckControlPlugin" expanded="True">
+            <Node name="InogeniLoupdeckControlPlugin">
+              <Node name="Actions" expanded="True" />
+              <Node name="metadata" expanded="True" />
+            </Node>
+          </Node>
+        </State>
+      </Pad>
+    </Pads>
+  </MonoDevelop.Ide.Workbench>
+  <MonoDevelop.Ide.ItemProperties.InogeniLoupdeckControlPlugin PreferredExecutionTarget="MonoDevelop.Default" />
+  <MonoDevelop.Ide.DebuggingService.PinnedWatches />
+  <MonoDevelop.Ide.Workspace ActiveConfiguration="Debug" />
+  <MultiItemStartupConfigurations />
+  <MonoDevelop.Ide.DebuggingService.Breakpoints>
+    <BreakpointStore />
+  </MonoDevelop.Ide.DebuggingService.Breakpoints>
+</Properties>
