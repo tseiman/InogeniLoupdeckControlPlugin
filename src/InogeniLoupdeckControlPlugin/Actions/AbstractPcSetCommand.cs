@@ -42,7 +42,7 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
 
         protected override BitmapImage GetCommandImage(String actionParameter, Int32 stateIndex, PluginImageSize imageSize)
         {
-            PluginLog.Verbose($"[{this.GetType().Name}] GetCommandImage {actionParameter}//{this.GetCurrentState(actionParameter).Name}");
+         //   PluginLog.Verbose($"[{this.GetType().Name}] GetCommandImage {this.GetInogeniHandlerState()}//{this.GetCurrentState(actionParameter).Name}");
 
            
             using (var bitmapBuilder = new BitmapBuilder(imageSize))
@@ -112,7 +112,9 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
         }
 
 
-        protected override String GetCommandDisplayName(String actionParameter, PluginImageSize imageSize) => this.GetCurrentState(actionParameter).DisplayName;
+        public abstract void HandleStateChange(States state);
+
+        //   protected override String GetCommandDisplayName(String actionParameter, Int32 stateIndex, PluginImageSize imageSize) => this.GetCurrentState(actionParameter).DisplayName;
 
 
     }

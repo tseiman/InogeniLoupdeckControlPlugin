@@ -1,0 +1,50 @@
+# CMake build folders
+/build/
+/src/build/
+/out/
+/bin/
+/lib/
+/CMakeFiles/
+/cmake-build-*/
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+Makefile
+cmake_install.cmake
+install_manifest.txt
+
+# Compiled object files
+*.o
+*.obj
+*.lo
+*.la
+*.a
+*.lib
+*.so
+*.so.*
+*.dll
+*.dylib
+
+# Executables
+*.exe
+*.out
+*.app
+*.run
+
+# Logs and debugging
+*.log
+*.swp
+core
+vgcore.*
+*.core
+
+# IDEs
+.vscode/
+.idea/
+*.user
+*.workspace
+
+# OS-specific
+.DS_Store
+Thumbs.db

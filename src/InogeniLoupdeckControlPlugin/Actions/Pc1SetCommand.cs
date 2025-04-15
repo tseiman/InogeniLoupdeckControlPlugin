@@ -23,6 +23,9 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
             this.Description = "USB Switch to PC1 (use this first as it configures the serial port)";
         
             this.MakeProfileAction("text;Enter PC name and serial device separated by a \";\":");
+
+            this.InogeniHandler.RegisterPC1EventCallback(this.HandleStateChange);
+
         }
 
 
@@ -35,11 +38,30 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
             this.PCName =  this.LoadConfigData("PC1Name");
             this.UARTDevice = this.LoadConfigData("UARTDevice");
 
+            if (!this.UARTDevice.Equals(""))
+            {
+                try
+                {
+                    this.InogeniHandler.Connect(this.UARTDevice);
+                    this.InogeniHandler.initCommands();
+                }
+                catch (Exception e)
+                {
+                    PluginLog.Error($"[Pc1SetCommand] OnLoad {e}");
+                }
+            }
+
+
+
             return result;
         }
 
 
-        protected override Boolean OnUnload() => base.OnUnload();
+        protected override Boolean OnUnload()
+        {
+           this.InogeniHandler.Disconnect();
+            return base.OnUnload();
+        }
 
 
 
@@ -55,15 +77,34 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
                 this.SaveConfigData("PC1Name", this.PCName, actionParams[0]);
                 this.SaveConfigData("UARTDevice", this.UARTDevice, actionParams[1]);
 
+                if (!this.UARTDevice.Equals(actionParams[1]))
+                {
+                    try
+                    {
+                        this.InogeniHandler.Disconnect();
+                        this.InogeniHandler.Connect(actionParams[1]);
+                    }
+                    catch (Exception e) {
+                        PluginLog.Error($"[Pc1SetCommand] RunCommand {e}");
+                    }
+                }
+
+
                 this.PCName = actionParams[0];
                 this.UARTDevice = actionParams[1];
                 PluginLog.Verbose($"[Pc1SetCommand] RunCommand setting PC1Name: {this.PCName}// UARTDevice: {this.UARTDevice}");
             }
 
-            this.InogeniHandler.setPC1State();
+            //   this.InogeniHandler.setPC1State();
+            this.InogeniHandler.TrySetPC1();
             this.SetCurrentState(actionParameter, Array.IndexOf(Enum.GetValues(typeof(States)), this.InogeniHandler.pc1state));
 
             this.ActionImageChanged();
+        }
+
+        public override void HandleStateChange(States states) {
+            this.ActionImageChanged();
+
         }
 
         public override States GetInogeniHandlerState() => this.InogeniHandler.pc1state;

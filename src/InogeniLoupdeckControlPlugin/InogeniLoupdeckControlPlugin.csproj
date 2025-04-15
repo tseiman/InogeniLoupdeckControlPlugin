@@ -40,7 +40,6 @@
     <PackageReference Include="System.Drawing.Common" Version="9.0.4" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="SixLabors.ImageSharp" Version="3.1.7" />
-    <PackageReference Include="SerialPortLib" Version="1.2.2" />
   </ItemGroup>
 
 
@@ -56,6 +55,13 @@
       <MetadataFiles Include="metadata\*.*" />
     </ItemGroup>
     <Copy SourceFiles="@(MetadataFiles)" DestinationFolder="$(OutputPath)/../metadata" />
+  </Target>
+
+    <Target Name="SerialBridge" AfterTargets="PostBuildEvent">
+    <ItemGroup>
+      <SerialBridgeFiles Include="../../SerialBridgeDotNet/src/build/serial_service" />
+    </ItemGroup>
+    <Copy SourceFiles="@(SerialBridgeFiles)" DestinationFolder="$(OutputPath)/../mac/" />
   </Target>
 
 

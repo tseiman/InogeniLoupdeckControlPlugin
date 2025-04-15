@@ -15,6 +15,7 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
         public override Boolean HasNoApplication => true;
 
         public static InogeniHandler InogeniHandler { get; } = new();
+        public static String PluginPath { get; private set; }
 
 
         public static event Action PluginReady;
@@ -22,20 +23,30 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
 
         public InogeniLoupdeckControlPlugin() {
             PluginLog.Init(this.Log);
-
+          
             PluginResources.Init(this.Assembly);
+            PluginPath = PluginResources.GetPluginFolder(this);
+
         }
 
         // This method is called when the plugin is loaded during the Loupedeck service start-up.
         public override void Load()
         {
+            
+
+
+
             PluginReady?.Invoke();
         }
 
         // This method is called when the plugin is unloaded during the Loupedeck service shutdown.
         public override void Unload()
         {
-            
+            PluginLog.Verbose("[InogeniLoupdeckControlPlugin] Unload ");
+            InogeniHandler.Disconnect();
+            base.Unload();
         }
+
+
     }
 }
