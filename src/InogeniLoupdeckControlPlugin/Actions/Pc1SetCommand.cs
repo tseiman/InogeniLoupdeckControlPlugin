@@ -43,7 +43,6 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
                 try
                 {
                     this.InogeniHandler.Connect(this.UARTDevice);
-                    this.InogeniHandler.initCommands();
                 }
                 catch (Exception e)
                 {
@@ -111,4 +110,3 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
     }
 
 }
-
