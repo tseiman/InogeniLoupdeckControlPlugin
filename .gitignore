@@ -10,6 +10,16 @@
 *.userosscache
 *.sln.docstates
 
+# Local agent/editor state
+.agents/
+.codex/
+.vscode/
+.idea/
+
+# OS metadata
+.DS_Store
+Thumbs.db
+
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
 

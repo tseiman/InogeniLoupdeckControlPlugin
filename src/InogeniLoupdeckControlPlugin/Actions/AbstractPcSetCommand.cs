@@ -31,9 +31,9 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
 
 
             this.AddState("NOSERIAL", "USB Switch " + DEVICENAME + "No Serial", "USB Switch " + DEVICENAME + "No Serial");
-            this.AddState("PCINACTIVE", "USB Switch " + DEVICENAME + "inactive", "USB Switch " + DEVICENAME + "inactive");
-            this.AddState("ACTIVE", "USB Switch " + DEVICENAME + "active", "USB Switch " + DEVICENAME + "active");
+            this.AddState("PCUNAVAILABLE", "USB Switch " + DEVICENAME + "unavailable", "USB Switch " + DEVICENAME + "unavailable");
             this.AddState("INACTIVE", "USB Switch " + DEVICENAME + "inactive", "USB Switch " + DEVICENAME + "inactive");
+            this.AddState("ACTIVE", "USB Switch " + DEVICENAME + "active", "USB Switch " + DEVICENAME + "active");
 
         }
 
@@ -44,12 +44,12 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
         {
          //   PluginLog.Verbose($"[{this.GetType().Name}] GetCommandImage {this.GetInogeniHandlerState()}//{this.GetCurrentState(actionParameter).Name}");
 
-           
+
             using (var bitmapBuilder = new BitmapBuilder(imageSize))
             {
 
 
-          
+
                 switch (this.GetInogeniHandlerState())
                 {
                     case InogeniHandler.States.PcUnavailable:
@@ -123,4 +123,3 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
 
 
 }
-

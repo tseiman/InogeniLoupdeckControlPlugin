@@ -3,6 +3,7 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
 {
     using System;
     using System.Diagnostics;
+    using System.Threading.Tasks;
 
     using Loupedeck.InogeniLoupdeckControlPlugin.Helpers;
 
@@ -13,8 +14,9 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
         private readonly String _binaryPath;
         private readonly String _port;
         private readonly Int32 _baudRate;
+        private Boolean _stopRequested;
 
-    
+
         private Action<String, Boolean> _handlerRxCallback;
 
         public SerialBridge(String binaryPath, String port, Int32 baudRate)
@@ -28,6 +30,7 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
 
         public void Start()
         {
+            this._stopRequested = false;
             this._process = new Process
             {
                 StartInfo = new ProcessStartInfo
@@ -47,16 +50,21 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
 
             this._process.Start();
 
-           
 
-            Task.Run(() => this.ReadFromSerial());
+
+            this._handlerRxCallback?.Invoke("__SERIAL_OPEN__", true);
+            Task.Run(() => this.ReadFromSerial(this._process));
         }
 
         private async void OnProcessExited(Object sender, EventArgs args)
         {
+            if (this._stopRequested)
+            {
+                return;
+            }
 
             PluginLog.Info("[SerialBridge] Serial service exited. Restarting...");
-           
+
             this._handlerRxCallback?.Invoke("Connection closed", false);
 
             await Task.Delay(500); // avoid hot loop
@@ -65,15 +73,15 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
 
 
 
-        private void ReadFromSerial()
+        private void ReadFromSerial(Process process)
         {
-            if (this._process == null || this._process.StandardOutput == null)
+            if (process == null || process.StandardOutput == null)
             {
                 return;
             }
 
-            var reader = this._process.StandardOutput;
-            while (!this._process.HasExited)
+            var reader = process.StandardOutput;
+            while (!process.HasExited)
             {
                 var line = reader.ReadLine();
                 if (line != null)
@@ -88,17 +96,31 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
         {
             if (this._process?.StandardInput != null && !this._process.HasExited)
             {
-                this._process.StandardInput.WriteLine(data);
-                this._process.StandardInput.Flush();
+                try
+                {
+                    this._process.StandardInput.Write($"{data}\r");
+                    this._process.StandardInput.Flush();
+                }
+                catch (Exception e)
+                {
+                    PluginLog.Warning($"[SerialBridge] Failed to send serial command: {e.Message}");
+                    this._handlerRxCallback?.Invoke("Connection closed", false);
+                }
             }
         }
 
-        public Boolean IsOpen() => this._process == null || this._process.StandardOutput == null;
-           
+        public Boolean IsOpen() => this._process != null && !this._process.HasExited && this._process.StandardInput != null;
+
 
         public void Stop()
         {
             PluginLog.Verbose("[SerialBridge] Stop ");
+            this._stopRequested = true;
+
+            if (this._process == null)
+            {
+                return;
+            }
 
             this._process.Exited -= this.OnProcessExited;
 
@@ -112,7 +134,7 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
                 this._process.WaitForExit(10000);
 
             }
-            
+
             if (this._process != null && !this._process.HasExited)
             {
 
@@ -143,15 +165,15 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
 
                 Process.Start(killProc).WaitForExit(10000);
             }
-            
+
 
             if (this._process != null && !this._process.HasExited)
             {
 
-                PluginLog.Verbose("Done Kill");
+                PluginLog.Error("[SerialBridge] Not able to kill serial service");
                 this._handlerRxCallback?.Invoke("Connection closed", false);
             } else {
-                PluginLog.Error("Not able to Kill");
+                PluginLog.Verbose("[SerialBridge] Serial service stopped");
             }
         }
 
