@@ -1,49 +1,89 @@
-# InogeniLoupdeckControlPloginPlugin
-A plugin to control the Imogene Toggle via R232
+# InogeniLoupdeckControlPlugin
+
+InogeniLoupdeckControlPlugin is a Loupedeck plugin for controlling an
+[INOGENI TOGGLE USB 3.0 switcher](https://inogeni.com/product/toggle/) from a
+[Loupedeck CT](https://loupedeck.com/us/products/loupedeck-ct/).
+
+The plugin adds Loupedeck actions for switching the INOGENI TOGGLE between its two USB
+host ports. It communicates with the TOGGLE over its RS-232 control interface and keeps
+the Loupedeck button state in sync by querying the currently selected host.
+
+Typical use case: a meeting room where shared USB peripherals, such as cameras,
+speakerphones or microphones, need to be switched between a room PC and a second host
+computer directly from the Loupedeck surface.
+
+![INOGENI TOGGLE USB switcher and Loupedeck CT control surface](doc/img/Setup.png)
+
+## Hardware
+
+- [INOGENI TOGGLE](https://inogeni.com/product/toggle/): USB 3.0 switcher with RS-232
+  control support.
+- [Loupedeck CT](https://loupedeck.com/us/products/loupedeck-ct/): customizable control
+  surface used to expose the plugin actions as buttons.
 
 ## Build
 
-This repository contains two build targets:
+### Standard build
 
-- `SerialBridgeDotNet/src`: a small C based serial bridge (`serial_service`)
-- `src`: the Loupedeck plugin built with .NET
+From the repository root:
 
-The plugin build expects the serial bridge binary at `SerialBridgeDotNet/src/build/serial_service`
-and copies it into the plugin output folder during the post-build step.
+```console
+cmake -S . -B build
+cmake --build build
+```
 
-### Prerequisites
+This is the normal build path. It builds both parts of the project:
+
+- `serial_service`, the C based serial bridge
+- `InogeniLoupdeckControlPlugin.sln`, the Loupedeck plugin built with .NET
+
+CMake builds the serial bridge first and then passes the generated bridge binary path into
+MSBuild via `SerialBridgePath`, so the plugin post-build step copies the correct binary into
+the plugin output folder.
+
+### Requirements
 
 - .NET 8 SDK
 - CMake and a C compiler
 - Logi/Loupedeck Plugin Service installed, so `PluginApi.dll` and `SkiaSharp.dll` are available
 
-On macOS the project file expects the Logi Plugin Service libraries here:
+On macOS the project file expects the Logi Plugin Service libraries at the default location:
 
 ```console
 /Applications/Utilities/LogiPluginService.app/Contents/MonoBundle/
 ```
 
-If your installation is in a different location, pass `PluginApiDir` when building the plugin.
+### Output
 
-### Build the serial bridge
+The Debug plugin output is written to:
+
+```console
+bin/Debug/mac
+```
+
+The project also writes a plugin link file into the Logi Plugin Service plugin directory as
+part of the post-build step.
+
+### Custom PluginApi path
+
+If `PluginApi.dll` is not in the default macOS location, pass the Logi Plugin Service
+`MonoBundle` directory to CMake:
+
+```console
+cmake -S . -B build -DPLUGIN_API_DIR=/path/to/LogiPluginService/MonoBundle/
+cmake --build build
+```
+
+### Build the serial bridge only
 
 From the repository root:
 
 ```console
-cd SerialBridgeDotNet/src
-mkdir -p build
-cd build
-cmake ..
-make
+cmake -S SerialBridgeDotNet/src -B SerialBridgeDotNet/src/build
+cmake --build SerialBridgeDotNet/src/build
 ```
 
-You can test the bridge manually with a serial device path:
-
-```console
-./serial_service -d /dev/tty.usbserial-123 -b 9600
-```
-
-### Build the Loupedeck plugin
+### Build the Loupedeck plugin only
 
 From the repository root, change into the .NET solution directory:
 
@@ -57,14 +97,13 @@ If `PluginApi.dll` is not in the default macOS location, provide the Logi Plugin
 
 ```console
 cd src
-dotnet build InogeniLoupdeckControlPlugin.sln -p:PluginApiDir=/path/to/LogiPluginService/MonoBundle/
+dotnet build InogeniLoupdeckControlPlugin.sln \
+  -p:PluginApiDir=/path/to/LogiPluginService/MonoBundle/ \
+  -p:SerialBridgePath=/path/to/serial_service
 ```
 
-The Debug output is written to:
+### Run the serial bridge manually
 
 ```console
-bin/Debug/mac
+./serial_service -d /dev/tty.usbserial-123 -b 9600
 ```
-
-The project also writes a plugin link file into the Logi Plugin Service plugin directory as
-part of the post-build step.

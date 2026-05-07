@@ -17,6 +17,7 @@
 
     <PluginDir Condition="$(OS) == 'Windows_NT'">$(LocalAppData)\Logi\LogiPluginService\Plugins\</PluginDir>
     <PluginDir Condition="$(OS) != 'Windows_NT'">~/Library/Application\ Support/Logi/LogiPluginService/Plugins/</PluginDir>
+    <SerialBridgePath Condition="'$(SerialBridgePath)' == ''">$(MSBuildProjectDirectory)/../../SerialBridgeDotNet/src/build/serial_service</SerialBridgePath>
   </PropertyGroup>
 
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
@@ -57,9 +58,9 @@
     <Copy SourceFiles="@(MetadataFiles)" DestinationFolder="$(OutputPath)/../metadata" />
   </Target>
 
-    <Target Name="SerialBridge" AfterTargets="PostBuildEvent">
+    <Target Name="SerialBridge" AfterTargets="PostBuildEvent" Condition="Exists('$(SerialBridgePath)')">
     <ItemGroup>
-      <SerialBridgeFiles Include="../../SerialBridgeDotNet/src/build/serial_service" />
+      <SerialBridgeFiles Include="$(SerialBridgePath)" />
     </ItemGroup>
     <Copy SourceFiles="@(SerialBridgeFiles)" DestinationFolder="$(OutputPath)/../mac/" />
   </Target>
