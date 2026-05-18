@@ -32,6 +32,14 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
         private SerialBridge serialBridge;
         private Timer _pollTimer;
         private readonly Object _stateLock = new();
+        private readonly Object _connectionLock = new();
+        private String _serialBridgeExecutable;
+        private String _serialDevice;
+        private DateTime _lastValidStatusUtc = DateTime.MinValue;
+        private DateTime _lastStatusRequestUtc = DateTime.MinValue;
+        private Int32 _invalidResponseCount;
+        private Int32 _statusRequestsWithoutValidResponse;
+        private Boolean _reconnectInProgress;
         private Boolean _isStopping;
 
         //       private SerialBridge serialBridge;
@@ -64,6 +72,12 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
             }
             this.Disconnect();
             this._isStopping = false;
+            this._serialBridgeExecutable = executeableSerialBridge;
+            this._serialDevice = tty;
+            this._lastValidStatusUtc = DateTime.MinValue;
+            this._lastStatusRequestUtc = DateTime.MinValue;
+            this._invalidResponseCount = 0;
+            this._statusRequestsWithoutValidResponse = 0;
             this.SetStates(States.NoSerial, States.NoSerial);
             this.serialBridge = new(executeableSerialBridge, tty, 9600);
             this.serialBridge.RegisterRXHandlerCallback(this.OnMessageReceive);
@@ -79,6 +93,8 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
             this._isStopping = true;
             this._pollTimer?.Dispose();
             this._pollTimer = null;
+            this._invalidResponseCount = 0;
+            this._statusRequestsWithoutValidResponse = 0;
             this.serialBridge?.Stop();
             this.serialBridge = null;
         }
@@ -87,7 +103,7 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
         public void initCommands()
         {
             this.SendMessage("SEV 1");
-            this.RequestStatus();
+            this.RequestStatusDelayed(300);
         }
 
 
@@ -100,20 +116,49 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
         private void StartPolling()
         {
             this._pollTimer?.Dispose();
-            this._pollTimer = new Timer(_ => this.RequestStatus(), null, TimeSpan.FromMilliseconds(500), TimeSpan.FromSeconds(2));
+            this._pollTimer = new Timer(_ => this.PollStatusAndCheckHealth(), null, TimeSpan.FromMilliseconds(1000), TimeSpan.FromSeconds(2));
         }
 
         private void RequestStatus()
         {
             if (this.serialBridge?.IsOpen() == true)
             {
+                var now = DateTime.UtcNow;
+                if (now - this._lastStatusRequestUtc < TimeSpan.FromMilliseconds(500))
+                {
+                    return;
+                }
+
+                this._lastStatusRequestUtc = now;
+                this._statusRequestsWithoutValidResponse++;
                 this.SendMessage("GH");
             }
         }
 
-        private async void RequestStatusDelayed()
+        private async void RequestStatusDelayed(Int32 delayMs = 250)
         {
-            await Task.Delay(250);
+            await Task.Delay(delayMs);
+            this.RequestStatus();
+        }
+
+        private void PollStatusAndCheckHealth()
+        {
+            if (this._isStopping || this._reconnectInProgress)
+            {
+                return;
+            }
+
+            if (this.serialBridge?.IsOpen() != true)
+            {
+                return;
+            }
+
+            if (this.ShouldReconnectBridge())
+            {
+                this.RestartSerialBridge("no valid INOGENI status after invalid serial responses");
+                return;
+            }
+
             this.RequestStatus();
         }
 
@@ -158,6 +203,11 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
                 return;
             }
 
+            if (this.IsCommandEcho(cleanMsg))
+            {
+                return;
+            }
+
             if (cleanMsg.Equals("ACK", StringComparison.OrdinalIgnoreCase) || cleanMsg.EndsWith(" ACK", StringComparison.OrdinalIgnoreCase))
             {
                 return;
@@ -188,10 +238,21 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
             }
 
             PluginLog.Verbose($"[InogeniHandler] ignoring serial response: {cleanMsg}");
+            this.RecordInvalidResponse(cleanMsg);
         }
+
+        private Boolean IsCommandEcho(String msg) =>
+            msg.Equals("GH", StringComparison.OrdinalIgnoreCase)
+            || Regex.IsMatch(msg, @"^\s*SEV\s+[01]\s*$", RegexOptions.IgnoreCase)
+            || Regex.IsMatch(msg, @"^\s*SH\s+[12]\s*$", RegexOptions.IgnoreCase);
 
         private void UpdateSelectedPcState(Int32 selectedPc)
         {
+            this._lastValidStatusUtc = DateTime.UtcNow;
+            this._invalidResponseCount = 0;
+            this._statusRequestsWithoutValidResponse = 0;
+            this.IsConnected = true;
+
             switch (selectedPc)
             {
                 case 0:
@@ -206,6 +267,76 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
                 default:
                     this.SetStates(States.PcUnavailable, States.PcUnavailable);
                     break;
+            }
+        }
+
+        private void RecordInvalidResponse(String response)
+        {
+            this._invalidResponseCount++;
+
+            if (this.ShouldReconnectBridge())
+            {
+                this.RestartSerialBridge($"invalid serial response '{response}'");
+            }
+        }
+
+        private Boolean ShouldReconnectBridge()
+        {
+            if (this._invalidResponseCount < 3 && this._statusRequestsWithoutValidResponse < 5)
+            {
+                return false;
+            }
+
+            if (this._lastValidStatusUtc == DateTime.MinValue)
+            {
+                return true;
+            }
+
+            return DateTime.UtcNow - this._lastValidStatusUtc > TimeSpan.FromSeconds(10);
+        }
+
+        private async void RestartSerialBridge(String reason)
+        {
+            lock (this._connectionLock)
+            {
+                if (this._reconnectInProgress || this._isStopping)
+                {
+                    return;
+                }
+
+                this._reconnectInProgress = true;
+            }
+
+            PluginLog.Warning($"[InogeniHandler] Restarting serial bridge: {reason}");
+
+            try
+            {
+                this.SetStates(States.NoSerial, States.NoSerial);
+                this.serialBridge?.Stop();
+                this.serialBridge = null;
+
+                await Task.Delay(1000);
+
+                if (this._isStopping || String.IsNullOrEmpty(this._serialBridgeExecutable) || String.IsNullOrEmpty(this._serialDevice))
+                {
+                    return;
+                }
+
+                this._invalidResponseCount = 0;
+                this._statusRequestsWithoutValidResponse = 0;
+                this._lastStatusRequestUtc = DateTime.MinValue;
+                this._lastValidStatusUtc = DateTime.MinValue;
+                this.serialBridge = new(this._serialBridgeExecutable, this._serialDevice, 9600);
+                this.serialBridge.RegisterRXHandlerCallback(this.OnMessageReceive);
+                this.serialBridge.Start();
+            }
+            catch (Exception e)
+            {
+                PluginLog.Error($"[InogeniHandler] Failed to restart serial bridge: {e}");
+            }
+            finally
+            {
+                this._reconnectInProgress = false;
             }
         }
 
@@ -272,4 +403,3 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
 
     }
 }
-

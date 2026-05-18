@@ -14,6 +14,7 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
         private readonly String _binaryPath;
         private readonly String _port;
         private readonly Int32 _baudRate;
+        private readonly Object _sendLock = new();
         private Boolean _stopRequested;
 
 
@@ -98,8 +99,11 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
             {
                 try
                 {
-                    this._process.StandardInput.Write($"{data}\r");
-                    this._process.StandardInput.Flush();
+                    lock (this._sendLock)
+                    {
+                        this._process.StandardInput.Write($"{data}\r");
+                        this._process.StandardInput.Flush();
+                    }
                 }
                 catch (Exception e)
                 {
@@ -181,4 +185,3 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
         public void RegisterRXHandlerCallback(Action<String, Boolean> cb) => this._handlerRxCallback = cb;
     }
 }
-
