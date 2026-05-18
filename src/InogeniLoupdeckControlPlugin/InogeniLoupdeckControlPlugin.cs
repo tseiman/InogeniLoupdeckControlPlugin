@@ -23,7 +23,8 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
 
         public InogeniLoupdeckControlPlugin() {
             PluginLog.Init(this.Log);
-          
+            PluginLog.Info($"[InogeniLoupdeckControlPlugin] Build {BuildInfo.GitVersion}");
+
             PluginResources.Init(this.Assembly);
             PluginPath = PluginResources.GetPluginFolder(this);
 
