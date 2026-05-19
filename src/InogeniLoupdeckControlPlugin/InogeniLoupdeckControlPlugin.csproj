@@ -22,6 +22,12 @@
 
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <OutputPath>..\..\bin\Debug\mac</OutputPath>
+    <PluginLinkTarget>$(MSBuildProjectDirectory)/../../bin/Debug</PluginLinkTarget>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <OutputPath>..\..\bin\Release\mac</OutputPath>
+    <PluginLinkTarget>$(MSBuildProjectDirectory)/../../bin/Release</PluginLinkTarget>
   </PropertyGroup>
 
   <Target Name="GenerateBuildInfo" BeforeTargets="CoreCompile">
@@ -65,8 +71,8 @@
 
 
   <Target Name="PostBuild" AfterTargets="PostBuildEvent">
-    <Exec Condition="$(OS) == 'Windows_NT'" Command="echo $(MSBuildProjectDirectory)/$(OutputPath).. &gt; &quot;$(PluginDir)$(ProjectName).link&quot;" />
-    <Exec Condition="$(OS) != 'Windows_NT'" Command="echo $(MSBuildProjectDirectory)/$(OutputPath).. &gt; $(PluginDir)$(ProjectName).link" />
+    <Exec Condition="$(OS) == 'Windows_NT'" Command="echo $(PluginLinkTarget) &gt; &quot;$(PluginDir)$(ProjectName).link&quot;" />
+    <Exec Condition="$(OS) != 'Windows_NT'" Command="echo $(PluginLinkTarget) &gt; $(PluginDir)$(ProjectName).link" />
   </Target>
 
 

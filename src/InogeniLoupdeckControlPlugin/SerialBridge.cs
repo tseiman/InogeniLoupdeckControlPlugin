@@ -98,10 +98,39 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
                 var line = reader.ReadLine();
                 if (line != null)
                 {
-                    PluginLog.Verbose($"[SerialBridge] {line}");
+                    if (this.ShouldLogSerialLine(line))
+                    {
+                        PluginLog.Verbose($"[SerialBridge] {line}");
+                    }
+
                     this._handlerRxCallback?.Invoke(line, true);
                 }
             }
+        }
+
+        private Boolean ShouldLogSerialLine(String line)
+        {
+#if DEBUG
+            return true;
+#else
+            var cleanLine = line?.Trim();
+            if (String.IsNullOrEmpty(cleanLine))
+            {
+                return false;
+            }
+
+            if (cleanLine.Equals("ACK", StringComparison.OrdinalIgnoreCase)
+                || cleanLine.Equals("GH", StringComparison.OrdinalIgnoreCase)
+                || cleanLine.Equals("RST", StringComparison.OrdinalIgnoreCase)
+                || cleanLine.Equals("0", StringComparison.OrdinalIgnoreCase)
+                || cleanLine.Equals("1", StringComparison.OrdinalIgnoreCase)
+                || cleanLine.Equals("2", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            return true;
+#endif
         }
 
         public void Send(String data)

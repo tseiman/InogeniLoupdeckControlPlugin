@@ -42,6 +42,7 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
         private Int32 _statusRequestsWithoutValidResponse;
         private Int32 _consecutiveReconnects;
         private Int32 _connectionGeneration;
+        private Int32 _selectedPc = -1;
         private Boolean _reconnectInProgress;
         private Boolean _serialInitializationInProgress;
         private Boolean _resetOnNextSerialOpen;
@@ -85,6 +86,7 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
             this._invalidResponseCount = 0;
             this._statusRequestsWithoutValidResponse = 0;
             this._consecutiveReconnects = 0;
+            this._selectedPc = -1;
             this._serialInitializationInProgress = false;
             this._resetOnNextSerialOpen = false;
             this._connectionGeneration++;
@@ -107,6 +109,7 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
             this._statusRequestsWithoutValidResponse = 0;
             this._consecutiveReconnects = 0;
             this._nextReconnectAllowedUtc = DateTime.MinValue;
+            this._selectedPc = -1;
             this._serialInitializationInProgress = false;
             this._resetOnNextSerialOpen = false;
             this._connectionGeneration++;
@@ -262,7 +265,10 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
                 return;
             }
 
-            PluginLog.Verbose($"[InogeniHandler] is open = {isOpen}, got message {cleanMsg}");
+            if (this.ShouldLogSerialMessage(cleanMsg))
+            {
+                PluginLog.Verbose($"[InogeniHandler] is open = {isOpen}, got message {cleanMsg}");
+            }
 
             if (cleanMsg.Equals("__SERIAL_OPEN__", StringComparison.OrdinalIgnoreCase))
             {
@@ -323,8 +329,19 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
             || Regex.IsMatch(msg, @"^\s*SEV\s+[01]\s*$", RegexOptions.IgnoreCase)
             || Regex.IsMatch(msg, @"^\s*SH\s+[12]\s*$", RegexOptions.IgnoreCase);
 
+        private Boolean ShouldLogSerialMessage(String msg)
+        {
+#if DEBUG
+            return true;
+#else
+            return msg.Equals("__SERIAL_OPEN__", StringComparison.OrdinalIgnoreCase);
+#endif
+        }
+
         private void UpdateSelectedPcState(Int32 selectedPc)
         {
+            var selectedPcChanged = this._selectedPc != selectedPc;
+            this._selectedPc = selectedPc;
             this._lastValidStatusUtc = DateTime.UtcNow;
             this._invalidResponseCount = 0;
             this._statusRequestsWithoutValidResponse = 0;
@@ -333,6 +350,11 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
             this._serialInitializationInProgress = false;
             this._resetOnNextSerialOpen = false;
             this.IsConnected = true;
+
+            if (selectedPcChanged)
+            {
+                PluginLog.Verbose($"[InogeniHandler] selected PC status changed to {selectedPc}");
+            }
 
             switch (selectedPc)
             {
