@@ -3,6 +3,7 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
 {
     using System;
     using System.Diagnostics;
+    using System.IO;
     using System.Threading.Tasks;
 
     using Loupedeck.InogeniLoupdeckControlPlugin.Helpers;
@@ -15,6 +16,7 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
         private readonly String _port;
         private readonly Int32 _baudRate;
         private readonly Object _sendLock = new();
+        private readonly Object _processLock = new();
         private Boolean _stopRequested;
 
 
@@ -31,30 +33,39 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
 
         public void Start()
         {
-            this._stopRequested = false;
-            this._process = new Process
+            lock (this._processLock)
             {
-                StartInfo = new ProcessStartInfo
+                if (this._process != null && !this._process.HasExited)
                 {
-                    FileName = _binaryPath,
-                    Arguments = $"-d {this._port} -b {this._baudRate}",
-                    RedirectStandardInput = true,
-                    RedirectStandardOutput = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                },
-                EnableRaisingEvents = true
-            };
+                    PluginLog.Warning($"[SerialBridge] Start ignored because serial service is already running with pid {this._process.Id}");
+                    return;
+                }
 
+                this.CleanupOrphanedBridgeProcesses();
 
-            this._process.Exited += this.OnProcessExited;
+                this._stopRequested = false;
+                this._process = new Process
+                {
+                    StartInfo = new ProcessStartInfo
+                    {
+                        FileName = _binaryPath,
+                        Arguments = $"-d {this._port} -b {this._baudRate}",
+                        RedirectStandardInput = true,
+                        RedirectStandardOutput = true,
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    },
+                    EnableRaisingEvents = true
+                };
 
-            this._process.Start();
+                this._process.Exited += this.OnProcessExited;
+                this._process.Start();
+                PluginLog.Verbose($"[SerialBridge] Serial service started with pid {this._process.Id}");
 
+                this._handlerRxCallback?.Invoke("__SERIAL_OPEN__", true);
+                Task.Run(() => this.ReadFromSerial(this._process));
+            }
 
-
-            this._handlerRxCallback?.Invoke("__SERIAL_OPEN__", true);
-            Task.Run(() => this.ReadFromSerial(this._process));
         }
 
         private async void OnProcessExited(Object sender, EventArgs args)
@@ -121,66 +132,157 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
             PluginLog.Verbose("[SerialBridge] Stop ");
             this._stopRequested = true;
 
-            if (this._process == null)
+            Process process;
+            lock (this._processLock)
+            {
+                process = this._process;
+                this._process = null;
+            }
+
+            if (process == null)
+            {
+                this.CleanupOrphanedBridgeProcesses();
+                return;
+            }
+
+            process.Exited -= this.OnProcessExited;
+            this.KillProcess(process, "tracked serial service");
+            process.Dispose();
+            this.CleanupOrphanedBridgeProcesses();
+        }
+
+        private void KillProcess(Process process, String description)
+        {
+            if (process == null)
             {
                 return;
             }
 
-            this._process.Exited -= this.OnProcessExited;
-
-
-            if (this._process != null && !this._process.HasExited)
+            try
             {
-
-                PluginLog.Verbose("Kill 1");
-
-                this._process.Kill();
-                this._process.WaitForExit(10000);
-
-            }
-
-            if (this._process != null && !this._process.HasExited)
-            {
-
-                PluginLog.Verbose("Kill 2");
-
-
-                var killProc = new ProcessStartInfo
+                if (process.HasExited)
                 {
-                    FileName = "/bin/kill",
-                    Arguments = $"-2 {this._process.Id}",
-                    UseShellExecute = false
-                };
-                Process.Start(killProc).WaitForExit(10000);
-            }
+                    PluginLog.Verbose($"[SerialBridge] {description} already stopped");
+                    return;
+                }
 
+                var pid = process.Id;
+                PluginLog.Verbose($"[SerialBridge] Stopping {description} pid {pid}");
 
-            if (this._process != null && !this._process.HasExited)
-            {
-
-                PluginLog.Verbose("Kill 2");
-
-                var killProc = new ProcessStartInfo
+                try
                 {
-                    FileName = "/usr/bin/killalll",
-                    Arguments = $"serial_service",
-                    UseShellExecute = false
-                };
+                    process.StandardInput?.Close();
+                }
+                catch (Exception)
+                {
+                    // Closing stdin is a best-effort hint before terminating the process.
+                }
 
-                Process.Start(killProc).WaitForExit(10000);
+                this.SendSignal(pid, "-TERM");
+                process.WaitForExit(2000);
+
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                    process.WaitForExit(5000);
+                }
+
+                if (process.HasExited)
+                {
+                    PluginLog.Verbose($"[SerialBridge] {description} stopped");
+                }
+                else
+                {
+                    PluginLog.Error($"[SerialBridge] Not able to kill {description} pid {pid}");
+                    this._handlerRxCallback?.Invoke("Connection closed", false);
+                }
             }
-
-
-            if (this._process != null && !this._process.HasExited)
+            catch (Exception e)
             {
-
-                PluginLog.Error("[SerialBridge] Not able to kill serial service");
+                PluginLog.Error($"[SerialBridge] Failed to stop {description}: {e}");
                 this._handlerRxCallback?.Invoke("Connection closed", false);
-            } else {
-                PluginLog.Verbose("[SerialBridge] Serial service stopped");
             }
         }
 
+        private void SendSignal(Int32 pid, String signal)
+        {
+            try
+            {
+                var killProc = Process.Start(new ProcessStartInfo
+                {
+                    FileName = "/bin/kill",
+                    Arguments = $"{signal} {pid}",
+                    UseShellExecute = false
+                });
+                killProc?.WaitForExit(2000);
+            }
+            catch (Exception e)
+            {
+                PluginLog.Warning($"[SerialBridge] Failed to send {signal} to pid {pid}: {e.Message}");
+            }
+        }
+
+        private void CleanupOrphanedBridgeProcesses()
+        {
+            if (!OperatingSystem.IsMacOS() && !OperatingSystem.IsLinux())
+            {
+                return;
+            }
+
+            try
+            {
+                var ps = Process.Start(new ProcessStartInfo
+                {
+                    FileName = "/bin/ps",
+                    Arguments = "-axo pid=,ppid=,command=",
+                    RedirectStandardOutput = true,
+                    UseShellExecute = false
+                });
+
+                if (ps == null)
+                {
+                    return;
+                }
+
+                var output = ps.StandardOutput.ReadToEnd();
+                ps.WaitForExit(2000);
+
+                foreach (var rawLine in output.Split('\n'))
+                {
+                    var line = rawLine.Trim();
+                    if (String.IsNullOrEmpty(line))
+                    {
+                        continue;
+                    }
+
+                    var parts = line.Split(new[] { ' ' }, 3, StringSplitOptions.RemoveEmptyEntries);
+                    if (parts.Length < 3
+                        || !Int32.TryParse(parts[0], out var pid)
+                        || !Int32.TryParse(parts[1], out var parentPid))
+                    {
+                        continue;
+                    }
+
+                    var command = parts[2];
+                    if (pid == Environment.ProcessId
+                        || parentPid > 1
+                        || !command.Contains(Path.GetFileName(this._binaryPath), StringComparison.Ordinal)
+                        || !command.Contains(this._port, StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
+                    PluginLog.Warning($"[SerialBridge] Killing orphaned serial service pid {pid}: {command}");
+                    var orphan = Process.GetProcessById(pid);
+                    this.KillProcess(orphan, "orphaned serial service");
+                    orphan.Dispose();
+                }
+            }
+            catch (Exception e)
+            {
+                PluginLog.Warning($"[SerialBridge] Failed to cleanup orphaned serial services: {e.Message}");
+            }
+        }
 
         public void RegisterRXHandlerCallback(Action<String, Boolean> cb) => this._handlerRxCallback = cb;
     }

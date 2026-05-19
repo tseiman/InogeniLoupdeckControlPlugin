@@ -37,13 +37,14 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
         private String _serialDevice;
         private DateTime _lastValidStatusUtc = DateTime.MinValue;
         private DateTime _lastStatusRequestUtc = DateTime.MinValue;
+        private DateTime _nextReconnectAllowedUtc = DateTime.MinValue;
         private Int32 _invalidResponseCount;
         private Int32 _statusRequestsWithoutValidResponse;
         private Int32 _consecutiveReconnects;
         private Int32 _connectionGeneration;
         private Boolean _reconnectInProgress;
         private Boolean _serialInitializationInProgress;
-        private Boolean _automaticRecoveryStopped;
+        private Boolean _resetOnNextSerialOpen;
         private Boolean _isStopping;
 
         //       private SerialBridge serialBridge;
@@ -80,11 +81,12 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
             this._serialDevice = tty;
             this._lastValidStatusUtc = DateTime.MinValue;
             this._lastStatusRequestUtc = DateTime.MinValue;
+            this._nextReconnectAllowedUtc = DateTime.MinValue;
             this._invalidResponseCount = 0;
             this._statusRequestsWithoutValidResponse = 0;
             this._consecutiveReconnects = 0;
             this._serialInitializationInProgress = false;
-            this._automaticRecoveryStopped = false;
+            this._resetOnNextSerialOpen = false;
             this._connectionGeneration++;
             this.SetStates(States.NoSerial, States.NoSerial);
             this.serialBridge = new(executeableSerialBridge, tty, 9600);
@@ -104,8 +106,9 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
             this._invalidResponseCount = 0;
             this._statusRequestsWithoutValidResponse = 0;
             this._consecutiveReconnects = 0;
+            this._nextReconnectAllowedUtc = DateTime.MinValue;
             this._serialInitializationInProgress = false;
-            this._automaticRecoveryStopped = false;
+            this._resetOnNextSerialOpen = false;
             this._connectionGeneration++;
             this.serialBridge?.Stop();
             this.serialBridge = null;
@@ -114,7 +117,9 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
 
         public void initCommands()
         {
-            this.ResetAndRequestStatus(this._connectionGeneration);
+            var sendReset = this._resetOnNextSerialOpen;
+            this._resetOnNextSerialOpen = false;
+            this.InitializeSerialConsole(this._connectionGeneration, sendReset);
         }
 
 
@@ -152,7 +157,7 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
             this.RequestStatus();
         }
 
-        private async void ResetAndRequestStatus(Int32 connectionGeneration)
+        private async void InitializeSerialConsole(Int32 connectionGeneration, Boolean sendReset)
         {
             if (this._isStopping)
             {
@@ -164,10 +169,17 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
             this._statusRequestsWithoutValidResponse = 0;
             this._serialInitializationInProgress = true;
 
-            PluginLog.Info("[InogeniHandler] Initializing INOGENI serial console with RST");
-            this.SendMessage("RST");
+            if (sendReset)
+            {
+                PluginLog.Info("[InogeniHandler] Initializing INOGENI serial console with RST");
+                this.SendMessage("RST");
+            }
+            else
+            {
+                PluginLog.Info("[InogeniHandler] Initializing INOGENI serial console");
+            }
 
-            await Task.Delay(5000);
+            await Task.Delay(sendReset ? 5000 : 1000);
 
             if (this._isStopping || connectionGeneration != this._connectionGeneration || this.serialBridge?.IsOpen() != true)
             {
@@ -198,7 +210,7 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
 
         private void PollStatusAndCheckHealth()
         {
-            if (this._isStopping || this._reconnectInProgress || this._serialInitializationInProgress || this._automaticRecoveryStopped)
+            if (this._isStopping || this._reconnectInProgress || this._serialInitializationInProgress)
             {
                 return;
             }
@@ -307,6 +319,7 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
 
         private Boolean IsCommandEcho(String msg) =>
             msg.Equals("GH", StringComparison.OrdinalIgnoreCase)
+            || msg.Equals("RST", StringComparison.OrdinalIgnoreCase)
             || Regex.IsMatch(msg, @"^\s*SEV\s+[01]\s*$", RegexOptions.IgnoreCase)
             || Regex.IsMatch(msg, @"^\s*SH\s+[12]\s*$", RegexOptions.IgnoreCase);
 
@@ -316,8 +329,9 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
             this._invalidResponseCount = 0;
             this._statusRequestsWithoutValidResponse = 0;
             this._consecutiveReconnects = 0;
+            this._nextReconnectAllowedUtc = DateTime.MinValue;
             this._serialInitializationInProgress = false;
-            this._automaticRecoveryStopped = false;
+            this._resetOnNextSerialOpen = false;
             this.IsConnected = true;
 
             switch (selectedPc)
@@ -349,7 +363,7 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
 
         private Boolean ShouldReconnectBridge()
         {
-            if (this._automaticRecoveryStopped)
+            if (DateTime.UtcNow < this._nextReconnectAllowedUtc)
             {
                 return false;
             }
@@ -379,18 +393,12 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
                 this._reconnectInProgress = true;
             }
 
-            if (this._consecutiveReconnects >= 3)
-            {
-                PluginLog.Warning($"[InogeniHandler] Automatic recovery stopped after 3 serial reconnects: {reason}");
-                this._automaticRecoveryStopped = true;
-                this.SetStates(States.NoSerial, States.NoSerial);
-                this._reconnectInProgress = false;
-                return;
-            }
-
             this._consecutiveReconnects++;
+            var reconnectDelay = this.GetReconnectDelay(this._consecutiveReconnects);
+            this._nextReconnectAllowedUtc = DateTime.UtcNow + reconnectDelay;
+            this._resetOnNextSerialOpen = this._consecutiveReconnects == 2;
 
-            PluginLog.Warning($"[InogeniHandler] Restarting serial bridge ({this._consecutiveReconnects}/3) with RST: {reason}");
+            PluginLog.Warning($"[InogeniHandler] Restarting serial bridge ({this._consecutiveReconnects}) in {reconnectDelay.TotalSeconds:0}s: {reason}");
 
             try
             {
@@ -398,7 +406,7 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
                 this.serialBridge?.Stop();
                 this.serialBridge = null;
 
-                await Task.Delay(1000);
+                await Task.Delay(reconnectDelay);
 
                 if (this._isStopping || String.IsNullOrEmpty(this._serialBridgeExecutable) || String.IsNullOrEmpty(this._serialDevice))
                 {
@@ -421,6 +429,21 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
             finally
             {
                 this._reconnectInProgress = false;
+            }
+        }
+
+        private TimeSpan GetReconnectDelay(Int32 reconnectAttempt)
+        {
+            switch (reconnectAttempt)
+            {
+                case 1:
+                    return TimeSpan.FromSeconds(1);
+                case 2:
+                    return TimeSpan.FromSeconds(10);
+                case 3:
+                    return TimeSpan.FromSeconds(15);
+                default:
+                    return TimeSpan.FromMinutes(5);
             }
         }
 
