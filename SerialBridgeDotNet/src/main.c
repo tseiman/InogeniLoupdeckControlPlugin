@@ -61,6 +61,8 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
+    tcflush(fd, TCIOFLUSH);
+
 
     fprintf(stderr, "Serial service started on %s @ %d baud\n", device, baudrate);
 

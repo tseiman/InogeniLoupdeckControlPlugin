@@ -297,7 +297,7 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
                 return false;
             }
 
-            if (this._invalidResponseCount < 3 && this._statusRequestsWithoutValidResponse < 5)
+            if (this._invalidResponseCount < 2 && this._statusRequestsWithoutValidResponse < 3)
             {
                 return false;
             }
@@ -312,7 +312,7 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
 
         private void StartRecovery(String reason)
         {
-            if (this._consecutiveReconnects >= 3 && !this._resetRecoveryInProgress)
+            if (this.ShouldResetInogeni())
             {
                 this.ResetInogeniAndRestartBridge(reason);
                 return;
@@ -320,6 +320,13 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
 
             this.RestartSerialBridge(reason);
         }
+
+        private Boolean ShouldResetInogeni() =>
+            !this._resetRecoveryInProgress
+            && (this._lastValidStatusUtc == DateTime.MinValue
+                || this._statusRequestsWithoutValidResponse >= 3
+                || this._invalidResponseCount >= 2
+                || this._consecutiveReconnects >= 3);
 
         private async void RestartSerialBridge(String reason)
         {
@@ -382,7 +389,7 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
                 this._resetRecoveryInProgress = true;
             }
 
-            this._nextReconnectAllowedUtc = DateTime.UtcNow + TimeSpan.FromSeconds(60);
+            this._nextReconnectAllowedUtc = DateTime.UtcNow + TimeSpan.FromSeconds(20);
             PluginLog.Warning($"[InogeniHandler] Resetting INOGENI and restarting serial bridge: {reason}");
 
             try
@@ -391,8 +398,10 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
 
                 if (this.serialBridge?.IsOpen() == true)
                 {
+                    this.SendMessage("");
+                    await Task.Delay(250);
                     this.SendMessage("RST");
-                    await Task.Delay(5000);
+                    await Task.Delay(8000);
                 }
 
                 this.serialBridge?.Stop();
@@ -419,6 +428,7 @@ namespace Loupedeck.InogeniLoupdeckControlPlugin
             }
             finally
             {
+                this._resetRecoveryInProgress = false;
                 this._reconnectInProgress = false;
             }
         }
